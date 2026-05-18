@@ -1,0 +1,90 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+
+  test:
+    name: Test / Python ${{ matrix.python-version }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+        os: [ubuntu-latest, ubuntu-22.04]
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install and import check
+        run: |
+          pip install textual rich
+          pip install -e .
+          python -c "from jetsetter.components import COMPONENTS; print(f'{len(COMPONENTS)} components OK')"
+          python -c "from jetsetter.installer import install_components"
+          python -c "from jetsetter.app import JetsonSetterApp"
+
+  build:
+    name: Build / ${{ matrix.artifact }}
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - artifact: sdist
+            os: ubuntu-latest
+            build_cmd: python -m build --sdist
+          - artifact: wheel-x86_64
+            os: ubuntu-latest
+            build_cmd: python -m build --wheel
+          - artifact: wheel-aarch64
+            os: ubuntu-22.04
+            build_cmd: python -m build --wheel
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install build twine
+      - run: ${{ matrix.build_cmd }}
+      - run: twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.artifact }}
+          path: dist/
+
+  merge:
+    name: Merge dist artifacts
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist/
+      - run: ls -lh dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: Publish to PyPI
+    needs: merge
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
