@@ -9,7 +9,6 @@ sudo pip3 install jetsetter
 # or from source:
 git clone https://github.com/anandishgupta-source/jetsetter
 cd jetsetter
-cd jetsetter
 sudo pip3 install .
 ```
 
