@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from typing import AsyncIterator, List
+from typing import AsyncIterator, Dict, List, Optional, Tuple
 
 from .components import Component
 from .repo import ensure_nvidia_repo
@@ -28,21 +28,19 @@ async def install_components(
       Step 3 — post-install checks in parallel
     """
 
-    # ── Step 1: ensure NVIDIA repo ────────────────────────────────────────────
     yield "── Step 1: Checking NVIDIA apt repository ───────────────"
     async for line in ensure_nvidia_repo():
         yield line
 
-    # ── Step 2: parallel group installs ───────────────────────────────────────
     yield ""
     yield f"── Step 2: Installing components (parallel groups, {_MAX_WORKERS} workers) ──"
 
-    # Group components by their group field
-    groups: dict[str, List[Component]] = {}
+    groups: Dict[str, List[Component]] = {}
     for comp in components:
         groups.setdefault(comp.group, []).append(comp)
 
-    queue: asyncio.Queue[tuple[str, str | None]] = asyncio.Queue()
+    # Keep the queue annotation compatible with Python 3.8.
+    queue = asyncio.Queue()  # type: asyncio.Queue[Tuple[str, Optional[str]]]
     sem = asyncio.Semaphore(_MAX_WORKERS)
 
     async def _install_group(group: str, comps: List[Component]) -> None:
@@ -51,7 +49,7 @@ async def install_components(
             for c in comps:
                 pkgs.extend(c.packages)
                 pkgs.extend(c.recommends)
-            pkgs = list(dict.fromkeys(pkgs))  # dedup, preserve order
+            pkgs = list(dict.fromkeys(pkgs))
 
             await queue.put((group, f"  [bold]▶ [{group}][/] installing {len(pkgs)} packages..."))
 
@@ -76,7 +74,7 @@ async def install_components(
             else:
                 await queue.put((group, f"  [red]✗ [{group}] apt exited {rc}[/]"))
 
-        await queue.put((group, None))  # sentinel
+        await queue.put((group, None))
 
     workers = [
         asyncio.create_task(_install_group(g, c))
@@ -94,7 +92,6 @@ async def install_components(
 
     await asyncio.gather(*workers)
 
-    # ── Step 3: parallel post-install checks ──────────────────────────────────
     yield ""
     yield "── Step 3: Post-install checks ──────────────────────────"
 
@@ -112,13 +109,12 @@ async def install_components(
     yield "[bold green]✔  Install complete![/]"
     yield ""
 
-    # Print any notes
     for comp in components:
         if comp.notes:
             yield f"[dim]{comp.name}:[/] {comp.notes}"
 
 
-async def _check_component(comp: Component) -> tuple[bool, str]:
+async def _check_component(comp: Component) -> Tuple[bool, str]:
     """Quick dpkg check that the first package is installed."""
     if not comp.packages:
         return True, "no packages"
