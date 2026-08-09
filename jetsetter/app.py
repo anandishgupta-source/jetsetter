@@ -232,8 +232,9 @@ class MainScreen(Screen):
 
     async def _init(self) -> None:
         """Detect board and populate component list in parallel."""
-        board_task = asyncio.create_task(asyncio.to_thread(_detect_info))
-        rows_task  = asyncio.create_task(self._populate())
+        loop = asyncio.get_event_loop()
+        board_task = loop.run_in_executor(None, _detect_info)
+        rows_task = asyncio.create_task(self._populate())
         (self._board, self._ver), _ = await asyncio.gather(board_task, rows_task)
 
         panel = self.query_one(BoardPanel)
