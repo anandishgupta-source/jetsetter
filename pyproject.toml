@@ -20,3 +20,9 @@ jetsetter = "jetsetter.app:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["jetsetter*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
